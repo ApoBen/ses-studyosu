@@ -1,0 +1,8 @@
+[Unit]
+Description=RVC profil hatti denetleyicisi (%i)
+
+[Service]
+Type=oneshot
+# Kurulum: aşağıdaki yolu kendi depo klasörünüzle değiştirin, sonra ~/.config/systemd/user/ altına kopyalayın.
+ExecStart=%h/ses-studyosu/scripts/profil/kontrol.sh %i
+TimeoutStartSec=55min

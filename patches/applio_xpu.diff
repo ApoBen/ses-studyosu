@@ -1,0 +1,284 @@
+diff --git a/rvc/configs/config.py b/rvc/configs/config.py
+index d9faaa2..63ac5c6 100644
+--- a/rvc/configs/config.py
++++ b/rvc/configs/config.py
+@@ -32,12 +32,20 @@ class Config:
+         self.device = (
+             "cuda:0"
+             if torch.cuda.is_available()
+-            else ("mps" if torch.backends.mps.is_available() else "cpu")
++            else (
++                "xpu:0"
++                if hasattr(torch, "xpu") and torch.xpu.is_available()
++                else ("mps" if torch.backends.mps.is_available() else "cpu")
++            )
+         )
+         self.gpu_name = (
+             torch.cuda.get_device_name(int(self.device.split(":")[-1]))
+             if self.device.startswith("cuda")
+-            else "Apple Silicon GPU (MPS)" if self.device == "mps" else None
++            else (
++                torch.xpu.get_device_name(int(self.device.split(":")[-1]))
++                if self.device.startswith("xpu")
++                else "Apple Silicon GPU (MPS)" if self.device == "mps" else None
++            )
+         )
+         self.json_config = self.load_config_json()
+         self.gpu_mem = None
+@@ -54,6 +62,12 @@ class Config:
+     def device_config(self):
+         if self.device.startswith("cuda"):
+             self.set_cuda_config()
++        elif self.device.startswith("xpu"):
++            i_device = int(self.device.split(":")[-1])
++            self.gpu_name = torch.xpu.get_device_name(i_device)
++            self.gpu_mem = torch.xpu.get_device_properties(i_device).total_memory // (
++                1024**3
++            )
+         elif self.device != "mps":
+             self.device = "cpu"
+ 
+@@ -118,6 +132,10 @@ def max_vram_gpu(gpu):
+         gpu_properties = torch.cuda.get_device_properties(gpu)
+         total_memory_gb = round(gpu_properties.total_memory / 1024 / 1024 / 1024)
+         return total_memory_gb
++    elif hasattr(torch, "xpu") and torch.xpu.is_available():
++        gpu_properties = torch.xpu.get_device_properties(gpu)
++        total_memory_gb = round(gpu_properties.total_memory / 1024 / 1024 / 1024)
++        return total_memory_gb
+     else:
+         return "8"
+ 
+@@ -133,6 +151,14 @@ def get_gpu_info():
+                 + 0.4
+             )
+             gpu_infos.append(f"{i}: {gpu_name} ({mem} GB)")
++    elif hasattr(torch, "xpu") and torch.xpu.is_available():
++        for i in range(torch.xpu.device_count()):
++            gpu_name = torch.xpu.get_device_name(i)
++            mem = int(
++                torch.xpu.get_device_properties(i).total_memory / 1024 / 1024 / 1024
++                + 0.4
++            )
++            gpu_infos.append(f"{i}: {gpu_name} ({mem} GB)")
+     elif torch.backends.mps.is_available():
+         gpu_infos.append("0: Apple Silicon GPU (MPS)")
+     if len(gpu_infos) > 0:
+@@ -146,6 +172,8 @@ def get_number_of_gpus():
+     if torch.cuda.is_available():
+         num_gpus = torch.cuda.device_count()
+         return "-".join(map(str, range(num_gpus)))
++    elif hasattr(torch, "xpu") and torch.xpu.is_available():
++        return "0"
+     elif torch.backends.mps.is_available():
+         # Apple Silicon GPU via Metal Performance Shaders. train.py selects the
+         # MPS device for any id other than "-", so report the single device id.
+diff --git a/rvc/train/train.py b/rvc/train/train.py
+index 8b80d4a..c0ae283 100644
+--- a/rvc/train/train.py
++++ b/rvc/train/train.py
+@@ -88,16 +88,20 @@ if vocoder == "RefineGAN":
+ current_dir = os.getcwd()
+ 
+ try:
++    has_xpu = hasattr(torch, "xpu") and torch.xpu.is_available()
+     precision = load_config()["precision"]
+     if (
+         precision == "bf16"
+-        and torch.cuda.is_available()
+-        and torch.cuda.is_bf16_supported()
++        and (
++            (torch.cuda.is_available() and torch.cuda.is_bf16_supported())
++            or (has_xpu and torch.xpu.is_bf16_supported())
++        )
+     ):
+         train_dtype = torch.bfloat16
+     elif precision == "fp16" and torch.cuda.is_available():
+         train_dtype = torch.float16
+     else:
++        # Intel XPU lacks fp64 required by GradScaler.unscale_; fall back to fp32.
+         train_dtype = torch.float32
+ except (FileNotFoundError, json.JSONDecodeError, KeyError):
+     train_dtype = torch.float32
+@@ -216,6 +220,11 @@ def main():
+         device = torch.device("cuda")
+         gpus = [int(item) for item in gpus.split("-")]
+         n_gpus = len(gpus)
++    elif gpus != "-" and hasattr(torch, "xpu") and torch.xpu.is_available():
++        device = torch.device("xpu:0")
++        gpus = [0]
++        n_gpus = 1
++        print(f"Training on Intel XPU ({torch.xpu.get_device_name(0)}).")
+     elif gpus != "-" and torch.backends.mps.is_available():
+         device = torch.device("mps")
+         gpus = [0]
+@@ -242,6 +251,23 @@ def main():
+             except json.JSONDecodeError:
+                 pass
+         with open(config_save_path, "w") as pid_file:
++            if device.type == "xpu" and n_gpus == 1:
++                pid_data["process_pids"].append(os.getpid())
++                json.dump(pid_data, pid_file, indent=4)
++                pid_file.flush()
++                run(
++                    0,
++                    n_gpus,
++                    experiment_dir,
++                    pretrainG,
++                    pretrainD,
++                    total_epoch,
++                    save_every_weights,
++                    config,
++                    device,
++                    gpus[0],
++                )
++                return
+             for rank, device_id in enumerate(gpus):
+                 subproc = mp.Process(
+                     target=run,
+@@ -339,7 +365,7 @@ def run(
+     else:
+         writer_eval = None
+ 
+-    if n_gpus > 1 and device.type == "cuda":
++    if n_gpus > 1 and device.type in ("cuda", "xpu"):
+         master_addr = os.environ.get("MASTER_ADDR", "127.0.0.1")
+         if master_addr == "localhost":
+             master_addr = "127.0.0.1"
+@@ -349,7 +375,7 @@ def run(
+ 
+         try:
+             dist.init_process_group(
+-                backend="gloo" if sys.platform == "win32" else "nccl",
++                backend="gloo" if (sys.platform == "win32" or device.type == "xpu") else "nccl",
+                 init_method=f"tcp://{master_addr}:{master_port}",
+                 world_size=n_gpus,
+                 rank=rank,
+@@ -361,7 +387,9 @@ def run(
+ 
+     torch.manual_seed(config.train.seed)
+ 
+-    if torch.cuda.is_available():
++    if device.type == "xpu":
++        torch.xpu.set_device(device_id)
++    elif torch.cuda.is_available():
+         torch.cuda.set_device(device_id)
+         if (
+             getattr(torch.version, "hip", None) is not None
+@@ -392,13 +420,13 @@ def run(
+ 
+     train_loader = DataLoader(
+         train_dataset,
+-        num_workers=2 if device.type == "mps" else 4,
++        num_workers=0 if device.type == "xpu" else (2 if device.type == "mps" else 4),
+         shuffle=False,
+         pin_memory=device.type == "cuda",
+         collate_fn=collate_fn,
+         batch_sampler=train_sampler,
+-        persistent_workers=True,
+-        prefetch_factor=2 if device.type == "mps" else 8,
++        persistent_workers=False if device.type == "xpu" else True,
++        prefetch_factor=None if device.type == "xpu" else (2 if device.type == "mps" else 8),
+     )
+ 
+     # Validations
+@@ -572,8 +600,11 @@ def run(
+         optim_d, gamma=config.train.lr_decay, last_epoch=epoch_str - 2
+     )
+ 
+-    use_scaler = device.type == "cuda" and train_dtype == torch.float16
+-    scaler = torch.amp.GradScaler(enabled=use_scaler)
++    use_scaler = device.type in ("cuda", "xpu") and train_dtype == torch.float16
++    scaler = torch.amp.GradScaler(
++        device.type if device.type in ("cuda", "xpu") else "cuda",
++        enabled=use_scaler,
++    )
+     if len(scaler_dict) > 0:
+         scaler.load_state_dict(scaler_dict)
+ 
+@@ -686,9 +717,10 @@ def train_and_evaluate(
+     net_g.train()
+     net_d.train()
+ 
+-    use_amp = device.type == "cuda" and (
++    use_amp = device.type in ("cuda", "xpu") and (
+         train_dtype == torch.bfloat16 or train_dtype == torch.float16
+     )
++    amp_device_type = device.type if device.type in ("cuda", "xpu") else "cuda"
+ 
+     # Data caching
+     if device.type == "cuda" and cache_data_in_gpu:
+@@ -737,7 +769,7 @@ def train_and_evaluate(
+             ) = info
+ 
+             with torch.amp.autocast(
+-                device_type="cuda", enabled=use_amp, dtype=train_dtype
++                device_type=amp_device_type, enabled=use_amp, dtype=train_dtype
+             ):
+                 # Forward pass
+                 model_output = net_g(
+@@ -756,7 +788,7 @@ def train_and_evaluate(
+                     )
+             for _ in range(d_step_per_g_step):  # default x1
+                 with torch.amp.autocast(
+-                    device_type="cuda", enabled=use_amp, dtype=train_dtype
++                    device_type=amp_device_type, enabled=use_amp, dtype=train_dtype
+                 ):
+                     y_d_hat_r, y_d_hat_g, _, _ = net_d(wave, y_hat.detach())
+                 loss_disc, _, _ = discriminator_loss(y_d_hat_r, y_d_hat_g)
+@@ -775,7 +807,7 @@ def train_and_evaluate(
+             net_d.requires_grad_(False)
+ 
+             with torch.amp.autocast(
+-                device_type="cuda", enabled=use_amp, dtype=train_dtype
++                device_type=amp_device_type, enabled=use_amp, dtype=train_dtype
+             ):
+                 # Generator backward and update
+                 _, y_d_hat_g, fmap_r, fmap_g = net_d(wave, y_hat)
+@@ -830,6 +862,8 @@ def train_and_evaluate(
+             net_d.requires_grad_(True)
+ 
+             global_step += 1
++            if device.type == "xpu" and global_step % 5 == 0:
++                torch.xpu.empty_cache()
+ 
+             # queue for rolling losses over 50 steps
+             avg_losses["grad_d_50"].append(grad_norm_d)
+@@ -882,7 +916,10 @@ def train_and_evaluate(
+         # end of batch train
+     # end of tqdm
+     with torch.no_grad():
+-        torch.cuda.empty_cache()
++        if device.type == "xpu":
++            torch.xpu.empty_cache()
++        elif device.type == "cuda":
++            torch.cuda.empty_cache()
+ 
+     # Logging and checkpointing
+     if rank == 0:
+@@ -939,7 +976,7 @@ def train_and_evaluate(
+ 
+         if epoch % save_every_epoch == 0:
+             with torch.amp.autocast(
+-                device_type="cuda", enabled=use_amp, dtype=train_dtype
++                device_type=amp_device_type, enabled=use_amp, dtype=train_dtype
+             ):
+                 with torch.no_grad():
+                     if hasattr(net_g, "module"):
+@@ -1058,8 +1095,15 @@ def train_and_evaluate(
+             print(f"Model {model_name} trained successfully.")
+             os._exit(0)
+ 
++        if device.type == "xpu" and epoch % save_every_epoch == 0:
++            print(f"XPU periodic restart after epoch {epoch} to release Level Zero host memory.", flush=True)
++            os._exit(42)
++
+         with torch.no_grad():
+-            torch.cuda.empty_cache()
++            if device.type == "xpu":
++                torch.xpu.empty_cache()
++            elif device.type == "cuda":
++                torch.cuda.empty_cache()
+ 
+ 
+ if __name__ == "__main__":

@@ -1,0 +1,9 @@
+[Unit]
+Description=RVC profil denetleyicisi (%i, 10 dk)
+
+[Timer]
+OnBootSec=12min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target

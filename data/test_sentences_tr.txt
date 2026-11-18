@@ -1,0 +1,40 @@
+# Türkçe Prozodi Test Cümleleri (Bölüm 5.6)
+
+# 1. Odak kayması (yüklem öncesi odak)
+Ali kitabı dün aldı.
+Dün kitabı Ali aldı.
+Ali dün kitabı aldı.
+Ben yarın Ankara'ya gideceğim.
+Yarın Ankara'ya ben gideceğim.
+
+# 2. Soru tipleri (mI soru eki ve soru kelimeleri)
+Ali dün mü geldi?
+Kitabı gerçekten okudun mu?
+Bu paketi kim getirdi?
+Yarın nereye gidiyoruz?
+Neden bu kadar geç kaldın?
+
+# 3. Virgüllü uzun cümleler ve devam tonu
+Sabah erkenden kalktım, kahvemi hazırladım, pencerenin önüne oturdum ve yağmuru izledim.
+Eğer zamanında yetişirsek, toplantıya katılırız, yoksa sonraki trene bineriz.
+Hava çok soğuktu; yine de dışarı çıkmaya karar verdik.
+
+# 4. İstisna vurgulu kelimeler ve olumsuz/ek-fiil ekleri
+Şimdi Ankara'da hava nasıl?
+Yarın İstanbul'a gitmedim ama İzmir'e uğrayacağım.
+Babam yıllarca bu okulda öğretmendi.
+Bunu kesinlikle yapma, yoksa pişman olursun!
+
+# 5. Sayılar, tarihler, saatler ve kısaltmalar
+17.11.2026 tarihinde saat 19:52'de toplantı başlayacak.
+Prof. Dr. Ahmet Bey, yaklaşık 1.250 TL tutarındaki faturayı %20 indirimle ödedi.
+Cad. No. 14 adresinde vb. yerlerde bu ürünleri bulabilirsiniz.
+
+# 6. Ünlem, üç nokta, parantez ve kullanıcı işaretlemesi
+Kazandık! İnanamıyorum, gerçekten başardık!
+Bilmiyorum... Belki de haklısın.
+Bu konu (her ne kadar karmaşık görünse de) aslında çok basit.
+Ali kitabı **dün** aldı.
+Peki<es 500>sonra ne oldu?
+<duygu=heyecanli>Harika bir haber bu!</duygu>
+
