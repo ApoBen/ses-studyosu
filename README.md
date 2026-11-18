@@ -19,7 +19,7 @@
 
 ### Özellikler
 
-- **Ham Kayıttan Otomatik Veri Seti:** Demucs (`htdemucs`) ile 5 dakikalık parçalar hâlinde vokal ayırma, sessizlikten bölme, XTTS konuşmacı gömmeleriyle baskın konuşmacı kümeleme (`kume`) veya bilinen aralıktaki istenmeyen anlatıcı/yapay zekâ sesini eleme (`tek`).
+- **Ham Kayıttan Otomatik Veri Seti:** Demucs (`htdemucs`) ile 5 dakikalık parçalar hâlinde vokal ayırma, sessizlikten bölme, XTTS konuşmacı gömmeleriyle baskın konuşmacı kümeleme (`kume`) veya bilinen aralıktaki istenmeyen ikinci bir sesi (anlatıcı vb.) eleme (`tek`).
 - **Otomatik Değerlendirme ve Durma:** Eğitim sırasında her 10 epoch'ta 20 test cümlesi üzerinden hedef konuşmacı merkezine (`profiles/<profil>/ref/centroid.npy`) kosinüs benzerliği ölçülür; plato veya yeterli eşiğine ulaşıldığında eğitim otomatik durdurulur ve `index_rate × protect` ızgara aramasıyla en iyi ayarlar `profiles/<profil>/model/ayarlar.json` olarak dışa aktarılır.
 - **Türkçe Tonlama ve Whisper Doğrulama:**
   - `core/text/`: Türkçe sayı/tarih/saat/birim/kısaltma normalizasyonu, `zeyrek` morfolojik analiziyle kelime vurgusu ve `stanza` bağımlılık ayrıştırmasıyla yüklem-öncesi odak ve soru tonu planlaması.
