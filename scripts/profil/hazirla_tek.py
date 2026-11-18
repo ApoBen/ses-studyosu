@@ -3,7 +3,7 @@ Kullanım: hazirla_tek.py <vocals.wav> <profil_klasörü> <ön_ek> --istenmeyen 
 
 Replikler kısa ve duygusal olarak çok değişken (bağırma, gülme, efekt): kümeleme aynı kişiyi parçalıyor.
 - Parçalar: sessizlikten bölünür (d=0.25 sn), <=12 sn.
-- İstenmeyen ses (ör. yapay zekâ anlatıcı) bilinen bir zaman aralığından örneklenir; ona karakterden daha yakın parçalar elenir.
+- İstenmeyen ses (ör. arka plandaki başka bir konuşmacı) bilinen bir zaman aralığından örneklenir; ona karakterden daha yakın parçalar elenir.
 - Karakter merkezi: istenmeyen olmayan parçaların ortalaması (2 tur); merkeze benzerliği < aykiri olanlar (efekt/gürültü) elenir.
 - ref.wav: merkeze en yakın parçalar birleştirilerek ~12 sn.
 """
